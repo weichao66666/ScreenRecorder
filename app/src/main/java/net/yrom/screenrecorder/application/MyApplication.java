@@ -6,22 +6,20 @@ import android.content.Context;
 /**
  * Created by raomengyang on 12/03/2017.
  */
-
 public class MyApplication extends Application {
-
     static {
         System.loadLibrary("screenrecorderrtmp");
     }
 
-    private static Context sContext;
+    private static Context context;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        sContext = getApplicationContext();
+        context = getApplicationContext();
     }
 
     public static Context getContext() {
-        return sContext;
+        return context;
     }
 }

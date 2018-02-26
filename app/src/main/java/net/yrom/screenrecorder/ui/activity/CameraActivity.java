@@ -279,17 +279,17 @@ public class CameraActivity extends AppCompatActivity implements Camera.PreviewC
         }
 
         private void sendAVCDecoderConfigurationRecord(long tms, MediaFormat format) {
-            byte[] AVCDecoderConfigurationRecord = Packager.H264Packager.generateAVCDecoderConfigurationRecord(format);
-            int packetLen = Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
+            byte[] AVCDecoderConfigurationRecord = Packager.H264Packager.generateAvcDecoderConfigurationRecord(format);
+            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
                     AVCDecoderConfigurationRecord.length;
             byte[] finalBuff = new byte[packetLen];
-            Packager.FLVPackager.fillFlvVideoTag(finalBuff,
+            Packager.FlvPackager.fillFlvVideoTag(finalBuff,
                     0,
                     true,
                     true,
                     AVCDecoderConfigurationRecord.length);
             System.arraycopy(AVCDecoderConfigurationRecord, 0,
-                    finalBuff, Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH, AVCDecoderConfigurationRecord.length);
+                    finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH, AVCDecoderConfigurationRecord.length);
             RESFlvData resFlvData = new RESFlvData();
             resFlvData.droppable = false;
             resFlvData.byteBuffer = finalBuff;
@@ -302,16 +302,16 @@ public class CameraActivity extends AppCompatActivity implements Camera.PreviewC
 
         private void sendRealData(long tms, ByteBuffer realData) {
             int realDataLength = realData.remaining();
-            int packetLen = Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                    Packager.FLVPackager.NALU_HEADER_LENGTH +
+            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+                    Packager.FlvPackager.NALU_HEADER_LENGTH +
                     realDataLength;
             byte[] finalBuff = new byte[packetLen];
-            realData.get(finalBuff, Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                            Packager.FLVPackager.NALU_HEADER_LENGTH,
+            realData.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+                            Packager.FlvPackager.NALU_HEADER_LENGTH,
                     realDataLength);
-            int frameType = finalBuff[Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                    Packager.FLVPackager.NALU_HEADER_LENGTH] & 0x1F;
-            Packager.FLVPackager.fillFlvVideoTag(finalBuff,
+            int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+                    Packager.FlvPackager.NALU_HEADER_LENGTH] & 0x1F;
+            Packager.FlvPackager.fillFlvVideoTag(finalBuff,
                     0,
                     false,
                     frameType == 5,

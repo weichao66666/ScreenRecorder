@@ -38,60 +38,65 @@ import static net.yrom.screenrecorder.rtmp.RESFlvData.FLV_RTMP_PACKET_TYPE_VIDEO
 
 /**
  * @author Yrom
- * Modified by raomengyang 2017-03-12
+ *         Modified by raomengyang 2017-03-12
  */
 public class ScreenRecorder extends Thread {
     private static final String TAG = "ScreenRecorder";
 
+    private static final String MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
+    private static final int FRAME_RATE = 30; // 30fps
+    private static final int IFRAME_INTERVAL = 2; // 2s between I-frames
+    private static final int TIMEOUT_US = 10000;
+
+    private RESFlvDataCollecter mDataCollecter;
     private int mWidth;
     private int mHeight;
     private int mBitRate;
     private int mDpi;
     private MediaProjection mMediaProjection;
-    // parameters for the encoder
-    private static final String MIME_TYPE = "video/avc"; // H.264 Advanced Video Coding
-    private static final int FRAME_RATE = 30; // 30 fps
-    private static final int IFRAME_INTERVAL = 2; // 2 seconds between I-frames
-    private static final int TIMEOUT_US = 10000;
 
-    private MediaCodec mEncoder;
-    private Surface mSurface;
     private long startTime = 0;
-    private AtomicBoolean mQuit = new AtomicBoolean(false);
-    private MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
-    private VirtualDisplay mVirtualDisplay;
-    private RESFlvDataCollecter mDataCollecter;
+    private MediaCodec mediaCodec;
+    private Surface surface;
+    private AtomicBoolean quit = new AtomicBoolean(false);
+    private MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+    private VirtualDisplay virtualDisplay;
 
-    public ScreenRecorder(RESFlvDataCollecter dataCollecter, int width, int height, int bitrate, int dpi, MediaProjection mp) {
+    public ScreenRecorder(RESFlvDataCollecter dataCollecter, int width, int height, int bitRate, int dpi, MediaProjection mediaProjection) {
         super(TAG);
+        mDataCollecter = dataCollecter;
         mWidth = width;
         mHeight = height;
-        mBitRate = bitrate;
+        mBitRate = bitRate;
         mDpi = dpi;
-        mMediaProjection = mp;
+        mMediaProjection = mediaProjection;
         startTime = 0;
-        mDataCollecter = dataCollecter;
     }
 
-    /**
-     * stop task
-     */
-    public final void quit() {
-        mQuit.set(true);
+    private void release() {
+        if (mediaCodec != null) {
+            mediaCodec.stop();
+            mediaCodec.release();
+            mediaCodec = null;
+        }
+        if (virtualDisplay != null) {
+            virtualDisplay.release();
+        }
+        if (mMediaProjection != null) {
+            mMediaProjection.stop();
+        }
     }
 
     @Override
     public void run() {
         try {
-            try {
-                prepareEncoder();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            mVirtualDisplay = mMediaProjection.createVirtualDisplay(TAG + "-display",
-                    mWidth, mHeight, mDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
-                    mSurface, null, null);
-            Log.d(TAG, "created virtual display: " + mVirtualDisplay);
+            prepareEncoder();
+            /*将画面投影到 VirtualDisplay 中*/
+            virtualDisplay = mMediaProjection.createVirtualDisplay(TAG, mWidth, mHeight, mDpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC/*设置可以将其他显示器的内容反射到该 VirtualDisplay 上（TODO 默认只能是自身应用？）*/,
+                    surface/*VirtualDisplay 将图像渲染到 Surface 中*/,
+                    null, null);
+            Log.d(TAG, "created virtual display: " + virtualDisplay);
             recordVirtualDisplay();
         } catch (Exception e) {
             e.printStackTrace();
@@ -100,124 +105,110 @@ public class ScreenRecorder extends Thread {
         }
     }
 
-
-    private void prepareEncoder() throws IOException {
-        MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
-        Log.d(TAG, "created video format: " + format);
-        mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
-        mEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mSurface = mEncoder.createInputSurface();
-        Log.d(TAG, "created input surface: " + mSurface);
-        mEncoder.start();
+    private void prepareEncoder() {
+        try {
+            // 创建 video/avc 类型的编码器，在这个场景下，MediaCodec 只允许使用 video/avc 编码类型，使用其他的编码会 crash
+            mediaCodec = MediaCodec.createEncoderByType(MIME_TYPE);
+            // 设置视频格式：video/avc
+            MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, mWidth, mHeight);
+            // 设置颜色格式：Surface
+            format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+            // 设置比特率
+            format.setInteger(MediaFormat.KEY_BIT_RATE, mBitRate);
+            // 设置帧率：30fps
+            format.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
+            // 设置关键帧间隔时间：2s
+            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
+            // 编码器应用格式
+            mediaCodec.configure(format, null, null,
+                    MediaCodec.CONFIGURE_FLAG_ENCODE/*设置该 MediaCodec 作为编码器使用*/);
+            // 创建 Surface
+            surface = mediaCodec.createInputSurface();
+            mediaCodec.start();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void recordVirtualDisplay() {
-        while (!mQuit.get()) {
-            int eobIndex = mEncoder.dequeueOutputBuffer(mBufferInfo, TIMEOUT_US);
+        while (!quit.get()) {
+            // 最多阻塞 10s，用于获取已成功解码的输出缓冲区的索引（缓冲的元数据会放到 bufferInfo 中）或者一个状态值
+            int eobIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US);
             switch (eobIndex) {
-                case MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED:
-                    LogTools.d("VideoSenderThread,MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED");
+                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
+                    LogTools.d("MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:" + mediaCodec.getOutputFormat().toString());
+                    sendAvcDecoderConfigurationRecord(0, mediaCodec.getOutputFormat());
                     break;
                 case MediaCodec.INFO_TRY_AGAIN_LATER:
-//                    LogTools.d("VideoSenderThread,MediaCodec.INFO_TRY_AGAIN_LATER");
-                    break;
-                case MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:
-                    LogTools.d("VideoSenderThread,MediaCodec.INFO_OUTPUT_FORMAT_CHANGED:" +
-                            mEncoder.getOutputFormat().toString());
-                    sendAVCDecoderConfigurationRecord(0, mEncoder.getOutputFormat());
+                    LogTools.d("MediaCodec.INFO_TRY_AGAIN_LATER");
                     break;
                 default:
-                    LogTools.d("VideoSenderThread,MediaCode,eobIndex=" + eobIndex);
-                    if (startTime == 0) {
-                        startTime = mBufferInfo.presentationTimeUs / 1000;
-                    }
+                    LogTools.d("mediaCodec eobIndex=" + eobIndex);
                     /**
                      * we send sps pps already in INFO_OUTPUT_FORMAT_CHANGED
                      * so we ignore MediaCodec.BUFFER_FLAG_CODEC_CONFIG
                      */
-                    if (mBufferInfo.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG && mBufferInfo.size != 0) {
-                        ByteBuffer realData = mEncoder.getOutputBuffers()[eobIndex];
-                        realData.position(mBufferInfo.offset + 4);
-                        realData.limit(mBufferInfo.offset + mBufferInfo.size);
-                        sendRealData((mBufferInfo.presentationTimeUs / 1000) - startTime, realData);
+                    if (bufferInfo.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG && bufferInfo.size != 0) {
+                        if (startTime == 0) {
+                            startTime = bufferInfo.presentationTimeUs / 1000;
+                        }
+                        //
+                        ByteBuffer realData = mediaCodec.getOutputBuffer(eobIndex);
+                        if (realData != null) {
+                            realData.position(bufferInfo.offset + 4);// TODO 为什么 + 4？？
+                            realData.limit(bufferInfo.offset + bufferInfo.size);
+                            sendRealData((bufferInfo.presentationTimeUs / 1000) - startTime, realData);
+                        }
                     }
-                    mEncoder.releaseOutputBuffer(eobIndex, false);
+                    mediaCodec.releaseOutputBuffer(eobIndex, false);
                     break;
             }
         }
     }
 
-
-    private void release() {
-        if (mEncoder != null) {
-            mEncoder.stop();
-            mEncoder.release();
-            mEncoder = null;
-        }
-        if (mVirtualDisplay != null) {
-            mVirtualDisplay.release();
-        }
-        if (mMediaProjection != null) {
-            mMediaProjection.stop();
-        }
-    }
-
-
-    public final boolean getStatus() {
-        return !mQuit.get();
-    }
-
-
-    private void sendAVCDecoderConfigurationRecord(long tms, MediaFormat format) {
-        byte[] AVCDecoderConfigurationRecord = Packager.H264Packager.generateAVCDecoderConfigurationRecord(format);
-        int packetLen = Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                AVCDecoderConfigurationRecord.length;
+    private void sendAvcDecoderConfigurationRecord(long timeMs, MediaFormat format) {
+        byte[] avcDecoderConfigurationRecord = Packager.H264Packager.generateAvcDecoderConfigurationRecord(format);
+        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + avcDecoderConfigurationRecord.length;
         byte[] finalBuff = new byte[packetLen];
-        Packager.FLVPackager.fillFlvVideoTag(finalBuff,
-                0,
-                true,
-                true,
-                AVCDecoderConfigurationRecord.length);
-        System.arraycopy(AVCDecoderConfigurationRecord, 0,
-                finalBuff, Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH, AVCDecoderConfigurationRecord.length);
+        // 在 finalBuff 数组最前面插入 5 个字节的 FLV video TAG
+        Packager.FlvPackager.fillFlvVideoTag(finalBuff, 0, true, true, avcDecoderConfigurationRecord.length);
+        // 将 avcDecoderConfigurationRecord 数组的数据拼接到 finalBuff 数组后面
+        System.arraycopy(avcDecoderConfigurationRecord, 0, finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH, avcDecoderConfigurationRecord.length);
         RESFlvData resFlvData = new RESFlvData();
         resFlvData.droppable = false;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
-        resFlvData.dts = (int) tms;
+        resFlvData.dts = (int) timeMs;
         resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
         resFlvData.videoFrameType = RESFlvData.NALU_TYPE_IDR;
         mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
     }
 
-    private void sendRealData(long tms, ByteBuffer realData) {
+    private void sendRealData(long timeMs, ByteBuffer realData) {
         int realDataLength = realData.remaining();
-        int packetLen = Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                Packager.FLVPackager.NALU_HEADER_LENGTH +
-                realDataLength;
+        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH + realDataLength;
         byte[] finalBuff = new byte[packetLen];
-        realData.get(finalBuff, Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                        Packager.FLVPackager.NALU_HEADER_LENGTH,
-                realDataLength);
-        int frameType = finalBuff[Packager.FLVPackager.FLV_VIDEO_TAG_LENGTH +
-                Packager.FLVPackager.NALU_HEADER_LENGTH] & 0x1F;
-        Packager.FLVPackager.fillFlvVideoTag(finalBuff,
-                0,
-                false,
-                frameType == 5,
-                realDataLength);
+        // 将 realData 数组的数据放到 finalBuff 数组的第 Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH+Packager.FlvPackager.NALU_HEADER_LENGTH+1 个位置到结束
+        realData.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH, realDataLength);
+        // 获取 NALU 类型，计算后得 5 表示 NALU 类型是 NALU_TYPE_IDR
+        int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH] & 0x1F;
+        // 在 finalBuff 数组最前面插入 9 个字节的 FLV video TAG
+        Packager.FlvPackager.fillFlvVideoTag(finalBuff, 0, false, frameType == 5, realDataLength);
         RESFlvData resFlvData = new RESFlvData();
         resFlvData.droppable = true;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
-        resFlvData.dts = (int) tms;
+        resFlvData.dts = (int) timeMs;
         resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
         resFlvData.videoFrameType = frameType;
         mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
+    }
+
+    public boolean getStatus() {
+        return !quit.get();
+    }
+
+    public void quit() {
+        quit.set(true);
     }
 }

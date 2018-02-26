@@ -6,72 +6,73 @@ import net.yrom.screenrecorder.tools.ByteArrayTools;
 
 import java.nio.ByteBuffer;
 
-
 /**
  * Created by lake on 16-3-30.
  */
 public class Packager {
     public static class H264Packager {
-
-        public static byte[] generateAVCDecoderConfigurationRecord(MediaFormat mediaFormat) {
-            ByteBuffer SPSByteBuff = mediaFormat.getByteBuffer("csd-0");
-            SPSByteBuff.position(4);
-            ByteBuffer PPSByteBuff = mediaFormat.getByteBuffer("csd-1");
-            PPSByteBuff.position(4);
-            int spslength = SPSByteBuff.remaining();
-            int ppslength = PPSByteBuff.remaining();
-            int length = 11 + spslength + ppslength;
+        public static byte[] generateAvcDecoderConfigurationRecord(MediaFormat mediaFormat) {
+            // 获取 csd-0 缓冲区的值，该值对应 SPS；csd-1 对应 PPS
+            ByteBuffer spsByteBuff = mediaFormat.getByteBuffer("csd-0");
+            ByteBuffer ppsByteBuff = mediaFormat.getByteBuffer("csd-1");
+            // 跳过 4 个字节的 configurationVersion，固定使用了 0x01
+            spsByteBuff.position(4);
+            ppsByteBuff.position(4);
+            // 获取缓冲区剩余字节数
+            int spsLength = spsByteBuff.remaining();
+            int ppsLength = ppsByteBuff.remaining();
+            // 11 字节包括：
+            // configurationVersion（1 字节）、
+            // AVCProfileIndication（1 字节）、
+            // profile_compatibility（1 字节）、
+            // AVCLevelIndication（1 字节）、
+            // 6bit的reserved + 2bit的lengthSizeMinusOne（1 字节）、
+            // 3bit的reserved + 5bit的numOfSequenceParameterSets（1 字节）、
+            // SPS 的长度（2 字节）、
+            // numOfPictureParameterSets（1 字节）、
+            // PPS 的长度（2 字节）
+            int length = 11 + spsLength + ppsLength;
             byte[] result = new byte[length];
-            SPSByteBuff.get(result, 8, spslength);
-            PPSByteBuff.get(result, 8 + spslength + 3, ppslength);
-            /**
-             * UB[8]configurationVersion
-             * UB[8]AVCProfileIndication
-             * UB[8]profile_compatibility
-             * UB[8]AVCLevelIndication
-             * UB[8]lengthSizeMinusOne
-             */
-            result[0] = 0x01;
-            result[1] = result[9];
-            result[2] = result[10];
-            result[3] = result[11];
-            result[4] = (byte) 0xFF;
-            /**
-             * UB[8]numOfSequenceParameterSets
-             * UB[16]sequenceParameterSetLength
-             */
-            result[5] = (byte) 0xE1;
-            ByteArrayTools.intToByteArrayTwoByte(result, 6, spslength);
-            /**
-             * UB[8]numOfPictureParameterSets
-             * UB[16]pictureParameterSetLength
-             */
-            int pos = 8 + spslength;
-            result[pos] = (byte) 0x01;
-            ByteArrayTools.intToByteArrayTwoByte(result, pos + 1, ppslength);
-
+            // 从 result 数组第 9 位开始放置 spsByteBuff，一直放置完
+            spsByteBuff.get(result, 8, spsLength);
+            // 从 result 数组第 9+spsLength+3 位开始放置 ppsByteBuff，一直放置完
+            ppsByteBuff.get(result, 8 + spsLength + 3, ppsLength);
+            result[0] = (byte) 0x01;// configurationVersion，实际测试时发现总为0x01
+            result[1] = result[9];// AVCProfileIndication
+            result[2] = result[10];// profile_compatibility
+            result[3] = result[11];// AVCLevelIndication
+            result[4] = (byte) 0xFF;// 6bit的reserved + 2bit的lengthSizeMinusOne，实际测试时发现总为0xff
+            result[5] = (byte) 0xE1;// 3bit的reserved + 5bit的numOfSequenceParameterSets，实际测试时发现总为0xe1
+            // result 数组第 7 位放置 spsLength 的高 8 位
+            // result 数组第 8 位放置 spsLength 的低 8 位
+            ByteArrayTools.intToByteArrayTwoByte(result, 6, spsLength);
+            int pos = 8 + spsLength;
+            result[pos] = (byte) 0x01;// numOfPictureParameterSets，实际测试时发现总为0x01
+            // result 数组第 8+spsLength+1 位放置 ppsLength 的高 8 位
+            // result 数组第 8+spsLength+2 位放置 ppsLength 的低 8 位
+            ByteArrayTools.intToByteArrayTwoByte(result, pos + 1, ppsLength);
             return result;
         }
     }
 
-    public static class FLVPackager {
+    public static class FlvPackager {
         public static final int FLV_TAG_LENGTH = 11;
         public static final int FLV_VIDEO_TAG_LENGTH = 5;
         public static final int FLV_AUDIO_TAG_LENGTH = 2;
         public static final int FLV_TAG_FOOTER_LENGTH = 4;
         public static final int NALU_HEADER_LENGTH = 4;
 
-        public static void fillFlvVideoTag(byte[] dst, int pos, boolean isAVCSequenceHeader, boolean isIDR, int readDataLength) {
-            //FrameType&CodecID
-            dst[pos] = isIDR ? (byte) 0x17 : (byte) 0x27;
-            //AVCPacketType
-            dst[pos + 1] = isAVCSequenceHeader ? (byte) 0x00 : (byte) 0x01;
-            //LAKETODO CompositionTime
-            dst[pos + 2] = 0x00;
-            dst[pos + 3] = 0x00;
-            dst[pos + 4] = 0x00;
-            if (!isAVCSequenceHeader) {
-                //NALU HEADER
+        public static void fillFlvVideoTag(byte[] dst, int pos, boolean isAvcSequenceHeader, boolean isIdr, int readDataLength) {
+            // 高 4 位表示 FrameType：1 为 I 帧，2 为 P 帧
+            // 低 4 位表示 CodecID：7 为 AVC
+            dst[pos] = isIdr ? (byte) 0x17 : (byte) 0x27;// FrameType | CodecID
+            // 当数据为 AVC 头时没有 video/audio 存在，否则，有 video 存在
+            dst[pos + 1] = isAvcSequenceHeader ? (byte) 0x00 : (byte) 0x01;// AVCPacketType
+            dst[pos + 2] = (byte) 0x00;// CompositionTime
+            dst[pos + 3] = (byte) 0x00;// CompositionTime
+            dst[pos + 4] = (byte) 0x00;// CompositionTime
+            if (!isAvcSequenceHeader) {
+                // 将 readDataLength 分为 4 字节
                 ByteArrayTools.intToByteArrayFull(dst, pos + 5, readDataLength);
             }
         }
@@ -87,5 +88,4 @@ public class Packager {
             dst[pos + 1] = isAACSequenceHeader ? (byte) 0x00 : (byte) 0x01;
         }
     }
-
 }

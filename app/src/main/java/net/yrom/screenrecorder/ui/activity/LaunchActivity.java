@@ -15,18 +15,17 @@ import butterknife.ButterKnife;
 import butterknife.OnClick;
 
 public class LaunchActivity extends AppCompatActivity {
-
-    @BindView(R.id.btn_screen_record)
-    Button btnScreenRecord;
-    @BindView(R.id.btn_camera_record)
-    Button btnCameraRecord;
-
-    private static final int REQUEST_STREAM = 1;
+    private static final int REQUEST_CODE_STREAM = 1;
     private static String[] PERMISSIONS_STREAM = {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
+
+    @BindView(R.id.btn_screen_record)
+    Button btnScreenRecord;
+    @BindView(R.id.btn_camera_record)
+    Button btnCameraRecord;
 
     boolean authorized = false;
 
@@ -54,14 +53,10 @@ public class LaunchActivity extends AppCompatActivity {
         int CAMERA_permission = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
         int RECORD_AUDIO_permission = ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO);
         int WRITE_EXTERNAL_STORAGE_permission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-        if (CAMERA_permission != PackageManager.PERMISSION_GRANTED ||
-                RECORD_AUDIO_permission != PackageManager.PERMISSION_GRANTED ||
-                WRITE_EXTERNAL_STORAGE_permission != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(
-                    this,
-                    PERMISSIONS_STREAM,
-                    REQUEST_STREAM
-            );
+        if (CAMERA_permission != PackageManager.PERMISSION_GRANTED
+                || RECORD_AUDIO_permission != PackageManager.PERMISSION_GRANTED
+                || WRITE_EXTERNAL_STORAGE_permission != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS_STREAM, REQUEST_CODE_STREAM);
             authorized = false;
         } else {
             authorized = true;
@@ -71,10 +66,10 @@ public class LaunchActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_STREAM) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED &&
-                    grantResults[1] == PackageManager.PERMISSION_GRANTED &&
-                    grantResults[2] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == REQUEST_CODE_STREAM) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    && grantResults[1] == PackageManager.PERMISSION_GRANTED
+                    && grantResults[2] == PackageManager.PERMISSION_GRANTED) {
                 authorized = true;
             }
         }

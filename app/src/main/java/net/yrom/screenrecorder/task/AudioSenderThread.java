@@ -77,12 +77,12 @@ public class AudioSenderThread extends Thread {
     }
 
     private void sendAudioSpecificConfig(long tms, ByteBuffer realData) {
-        int packetLen = Packager.FLVPackager.FLV_AUDIO_TAG_LENGTH +
+        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH +
                 realData.remaining();
         byte[] finalBuff = new byte[packetLen];
-        realData.get(finalBuff, Packager.FLVPackager.FLV_AUDIO_TAG_LENGTH,
+        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH,
                 realData.remaining());
-        Packager.FLVPackager.fillFlvAudioTag(finalBuff,
+        Packager.FlvPackager.fillFlvAudioTag(finalBuff,
                 0,
                 true);
         RESFlvData resFlvData = new RESFlvData();
@@ -95,12 +95,12 @@ public class AudioSenderThread extends Thread {
     }
 
     private void sendRealData(long tms, ByteBuffer realData) {
-        int packetLen = Packager.FLVPackager.FLV_AUDIO_TAG_LENGTH +
+        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH +
                 realData.remaining();
         byte[] finalBuff = new byte[packetLen];
-        realData.get(finalBuff, Packager.FLVPackager.FLV_AUDIO_TAG_LENGTH,
+        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH,
                 realData.remaining());
-        Packager.FLVPackager.fillFlvAudioTag(finalBuff,
+        Packager.FlvPackager.fillFlvAudioTag(finalBuff,
                 0,
                 false);
         RESFlvData resFlvData = new RESFlvData();
