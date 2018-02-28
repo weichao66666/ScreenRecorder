@@ -10,7 +10,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
 
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 import net.yrom.screenrecorder.task.AudioSenderThread;
 import net.yrom.screenrecorder.tools.LogTools;
 
@@ -23,8 +23,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Created by lake on 16-5-24.
  */
-public class RESSoftAudioCore {
-    RESCoreParameters resCoreParameters;
+public class ResSoftAudioCore {
+    ResCoreParameters resCoreParameters;
     private final Object syncOp = new Object();
     private MediaCodec dstAudioEncoder;
     private MediaFormat dstAudioFormat;
@@ -33,16 +33,16 @@ public class RESSoftAudioCore {
     private BaseSoftAudioFilter audioFilter;
     //AudioBuffs
     //buffers to handle buff from queueAudio
-    private RESAudioBuff[] orignAudioBuffs;
+    private ResAudioBuff[] orignAudioBuffs;
     private int lastAudioQueueBuffIndex;
     //buffer to handle buff from orignAudioBuffs
-    private RESAudioBuff orignAudioBuff;
-    private RESAudioBuff filteredAudioBuff;
+    private ResAudioBuff orignAudioBuff;
+    private ResAudioBuff filteredAudioBuff;
     private AudioFilterHandler audioFilterHandler;
     private HandlerThread audioFilterHandlerThread;
     private AudioSenderThread audioSenderThread;
 
-    public RESSoftAudioCore(RESCoreParameters parameters) {
+    public ResSoftAudioCore(ResCoreParameters parameters) {
         resCoreParameters = parameters;
         lockAudioFilter = new ReentrantLock(false);
     }
@@ -78,20 +78,20 @@ public class RESSoftAudioCore {
             //44100/10=4410,4410*2 = 8820
             int audioQueueNum = resCoreParameters.audioBufferQueueNum;
             int orignAudioBuffSize = resCoreParameters.mediacodecAACSampleRate / 5;
-            orignAudioBuffs = new RESAudioBuff[audioQueueNum];
+            orignAudioBuffs = new ResAudioBuff[audioQueueNum];
             for (int i = 0; i < audioQueueNum; i++) {
-                orignAudioBuffs[i] = new RESAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
+                orignAudioBuffs[i] = new ResAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
             }
-            orignAudioBuff = new RESAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
-            filteredAudioBuff = new RESAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
+            orignAudioBuff = new ResAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
+            filteredAudioBuff = new ResAudioBuff(AudioFormat.ENCODING_PCM_16BIT, orignAudioBuffSize);
             return true;
         }
     }
 
-    public void start(RESFlvDataCollecter flvDataCollecter) {
+    public void start(ResFlvDataCollecter flvDataCollecter) {
         synchronized (syncOp) {
             try {
-                for (RESAudioBuff buff : orignAudioBuffs) {
+                for (ResAudioBuff buff : orignAudioBuffs) {
                     buff.isReadyToFill = true;
                 }
                 if (dstAudioEncoder == null) {
@@ -106,7 +106,7 @@ public class RESSoftAudioCore {
                 audioSenderThread.start();
                 audioFilterHandler = new AudioFilterHandler(audioFilterHandlerThread.getLooper());
             } catch (Exception e) {
-                LogTools.trace("RESSoftAudioCore", e);
+                LogTools.trace("ResSoftAudioCore", e);
             }
         }
     }
@@ -120,7 +120,7 @@ public class RESSoftAudioCore {
                 audioSenderThread.quit();
                 audioSenderThread.join();
             } catch (InterruptedException e) {
-                LogTools.trace("RESSoftAudioCore", e);
+                LogTools.trace("ResSoftAudioCore", e);
             }
             dstAudioEncoder.stop();
             dstAudioEncoder.release();
@@ -128,7 +128,7 @@ public class RESSoftAudioCore {
         }
     }
 
-    public static MediaCodec createAudioMediaCodec(RESCoreParameters coreParameters, MediaFormat audioFormat) {
+    public static MediaCodec createAudioMediaCodec(ResCoreParameters coreParameters, MediaFormat audioFormat) {
         //Audio
         MediaCodec result;
         audioFormat.setString(MediaFormat.KEY_MIME, "audio/mp4a-latm");

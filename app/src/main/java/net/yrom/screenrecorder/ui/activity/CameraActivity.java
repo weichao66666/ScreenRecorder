@@ -19,8 +19,8 @@ import android.widget.Toast;
 
 import net.yrom.screenrecorder.R;
 import net.yrom.screenrecorder.core.Packager;
-import net.yrom.screenrecorder.rtmp.RESFlvData;
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.rtmp.ResFlvData;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 import net.yrom.screenrecorder.task.RtmpStreamingSender;
 import net.yrom.screenrecorder.tools.LogTools;
 
@@ -33,7 +33,7 @@ import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 
-import static net.yrom.screenrecorder.rtmp.RESFlvData.FLV_RTMP_PACKET_TYPE_VIDEO;
+import static net.yrom.screenrecorder.rtmp.ResFlvData.FLV_TAGTYPE_VIDEO;
 
 public class CameraActivity extends AppCompatActivity implements Camera.PreviewCallback, SurfaceHolder.Callback {
 
@@ -47,7 +47,7 @@ public class CameraActivity extends AppCompatActivity implements Camera.PreviewC
 
     private AtomicBoolean mQuit = new AtomicBoolean(false);
     private MediaCodec.BufferInfo mBufferInfo = new MediaCodec.BufferInfo();
-    private RESFlvDataCollecter mDataCollecter;
+    private ResFlvDataCollecter mDataCollecter;
     private RtmpStreamingSender streamingSender;
     private String rtmpAddr;
     private int mWidth;
@@ -111,9 +111,9 @@ public class CameraActivity extends AppCompatActivity implements Camera.PreviewC
         }
         streamingSender = new RtmpStreamingSender();
         streamingSender.sendStart(rtmpAddr);
-        mDataCollecter = new RESFlvDataCollecter() {
+        mDataCollecter = new ResFlvDataCollecter() {
             @Override
-            public void collect(RESFlvData flvData, int type) {
+            public void collect(ResFlvData flvData, int type) {
                 streamingSender.sendFood(flvData, type);
             }
         };
@@ -279,51 +279,51 @@ public class CameraActivity extends AppCompatActivity implements Camera.PreviewC
         }
 
         private void sendAVCDecoderConfigurationRecord(long tms, MediaFormat format) {
-            byte[] AVCDecoderConfigurationRecord = Packager.H264Packager.generateAvcDecoderConfigurationRecord(format);
-            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+            byte[] AVCDecoderConfigurationRecord = Packager.AvcPackager.generateAvcDecoderConfigurationRecord(format);
+            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH +
                     AVCDecoderConfigurationRecord.length;
             byte[] finalBuff = new byte[packetLen];
-            Packager.FlvPackager.fillFlvVideoTag(finalBuff,
+            Packager.FlvPackager.setAvcTag(finalBuff,
                     0,
                     true,
                     true,
                     AVCDecoderConfigurationRecord.length);
             System.arraycopy(AVCDecoderConfigurationRecord, 0,
-                    finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH, AVCDecoderConfigurationRecord.length);
-            RESFlvData resFlvData = new RESFlvData();
+                    finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH, AVCDecoderConfigurationRecord.length);
+            ResFlvData resFlvData = new ResFlvData();
             resFlvData.droppable = false;
             resFlvData.byteBuffer = finalBuff;
             resFlvData.size = finalBuff.length;
             resFlvData.dts = (int) tms;
-            resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
-            resFlvData.videoFrameType = RESFlvData.NALU_TYPE_IDR;
-            mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
+            resFlvData.flvTagType = FLV_TAGTYPE_VIDEO;
+            resFlvData.videoFrameType = ResFlvData.AVC_NALU_TYPE_IDR;
+            mDataCollecter.collect(resFlvData, FLV_TAGTYPE_VIDEO);
         }
 
         private void sendRealData(long tms, ByteBuffer realData) {
             int realDataLength = realData.remaining();
-            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+            int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH +
                     Packager.FlvPackager.NALU_HEADER_LENGTH +
                     realDataLength;
             byte[] finalBuff = new byte[packetLen];
-            realData.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+            realData.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH +
                             Packager.FlvPackager.NALU_HEADER_LENGTH,
                     realDataLength);
-            int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH +
+            int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH +
                     Packager.FlvPackager.NALU_HEADER_LENGTH] & 0x1F;
-            Packager.FlvPackager.fillFlvVideoTag(finalBuff,
+            Packager.FlvPackager.setAvcTag(finalBuff,
                     0,
                     false,
                     frameType == 5,
                     realDataLength);
-            RESFlvData resFlvData = new RESFlvData();
+            ResFlvData resFlvData = new ResFlvData();
             resFlvData.droppable = true;
             resFlvData.byteBuffer = finalBuff;
             resFlvData.size = finalBuff.length;
             resFlvData.dts = (int) tms;
-            resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
+            resFlvData.flvTagType = FLV_TAGTYPE_VIDEO;
             resFlvData.videoFrameType = frameType;
-            mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
+            mDataCollecter.collect(resFlvData, FLV_TAGTYPE_VIDEO);
         }
     }
 }

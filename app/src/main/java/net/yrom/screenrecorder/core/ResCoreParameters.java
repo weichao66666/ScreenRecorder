@@ -8,7 +8,7 @@ import java.lang.reflect.Modifier;
 /**
  * Created by lake on 16-3-16.
  */
-public class RESCoreParameters {
+public class ResCoreParameters {
     public static final int FILTER_MODE_HARD = 1;
     public static final int FILTER_MODE_SOFT = 2;
 
@@ -66,7 +66,7 @@ public class RESCoreParameters {
     //sender
     public int senderQueueLength;
 
-    public RESCoreParameters() {
+    public ResCoreParameters() {
         done = false;
         printDetailMsg = false;
         filterMode = -1;
@@ -109,6 +109,7 @@ public class RESCoreParameters {
                 sb.append(field.get(this));
                 sb.append(';');
             } catch (IllegalAccessException e) {
+                e.printStackTrace();
             }
         }
         return sb.toString();

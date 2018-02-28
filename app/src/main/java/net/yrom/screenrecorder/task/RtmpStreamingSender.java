@@ -2,9 +2,9 @@ package net.yrom.screenrecorder.task;
 
 import android.text.TextUtils;
 
-import net.yrom.screenrecorder.core.RESCoreParameters;
-import net.yrom.screenrecorder.rtmp.FLvMetaData;
-import net.yrom.screenrecorder.rtmp.RESFlvData;
+import net.yrom.screenrecorder.core.ResCoreParameters;
+import net.yrom.screenrecorder.rtmp.FlvMetaData;
+import net.yrom.screenrecorder.rtmp.ResFlvData;
 import net.yrom.screenrecorder.rtmp.RtmpClient;
 import net.yrom.screenrecorder.tools.LogTools;
 
@@ -29,24 +29,23 @@ public class RtmpStreamingSender implements Runnable {
 
     private final Object lock = new Object();
     private static final int MAX_QUEUE_CAPACITY = 50;
-    private LinkedBlockingDeque<RESFlvData> frameQueue = new LinkedBlockingDeque<>(MAX_QUEUE_CAPACITY);
+    private LinkedBlockingDeque<ResFlvData> frameQueue = new LinkedBlockingDeque<>(MAX_QUEUE_CAPACITY);
     private AtomicBoolean quit = new AtomicBoolean(false);
-    private FLvMetaData fLvMetaData;
-    private RESCoreParameters coreParameters;
+    private FlvMetaData flvMetaData;
+    private ResCoreParameters coreParameters;
 
     private long jniRtmpPointer = 0;
-    private int maxQueueLength = 50;
     private int writeMsgNum = 0;
 
     public RtmpStreamingSender() {
-        coreParameters = new RESCoreParameters();
-        coreParameters.mediacodecAACBitRate = RESFlvData.AAC_BITRATE;
-        coreParameters.mediacodecAACSampleRate = RESFlvData.AAC_SAMPLE_RATE;
-        coreParameters.mediacodecAVCFrameRate = RESFlvData.FPS;
-        coreParameters.videoWidth = RESFlvData.VIDEO_WIDTH;
-        coreParameters.videoHeight = RESFlvData.VIDEO_HEIGHT;
+        coreParameters = new ResCoreParameters();
+        coreParameters.mediacodecAACBitRate = ResFlvData.AAC_BITRATE;
+        coreParameters.mediacodecAACSampleRate = ResFlvData.AAC_SAMPLE_RATE;
+        coreParameters.mediacodecAVCFrameRate = ResFlvData.FPS;
+        coreParameters.videoWidth = ResFlvData.VIDEO_WIDTH;
+        coreParameters.videoHeight = ResFlvData.VIDEO_HEIGHT;
 
-        fLvMetaData = new FLvMetaData(coreParameters);
+        flvMetaData = new FlvMetaData(coreParameters);
     }
 
     @Override
@@ -55,18 +54,21 @@ public class RtmpStreamingSender implements Runnable {
             if (frameQueue.size() > 0) {
                 switch (state) {
                     case STATE.START:
-                        LogTools.d("RESRtmpSender,WorkHandler,tid=" + Thread.currentThread().getId());
                         if (TextUtils.isEmpty(mRtmpAddr)) {
                             LogTools.e("rtmp address is null!");
                             break;
                         }
+
+                        // 建立 RTMP 链接
                         jniRtmpPointer = RtmpClient.open(mRtmpAddr, true);
                         if (jniRtmpPointer != 0) {
+                            // 获取地址
                             String serverIpAddr = RtmpClient.getIpAddr(jniRtmpPointer);
-                            LogTools.d("server ip address = " + serverIpAddr);
+                            LogTools.d("server ip address: " + serverIpAddr);
 
-                            byte[] MetaData = fLvMetaData.getMetaData();
-                            RtmpClient.write(jniRtmpPointer, MetaData, MetaData.length, RESFlvData.FLV_RTMP_PACKET_TYPE_INFO, 0);
+                            // 发送 onMetaData TAG
+                            byte[] metaData = flvMetaData.getMetaData();
+                            RtmpClient.write(jniRtmpPointer, metaData, metaData.length, ResFlvData.FLV_TAGTYPE_SCRIPT_DATA, 0);
 
                             state = STATE.RUNNING;
                         }
@@ -75,33 +77,39 @@ public class RtmpStreamingSender implements Runnable {
                         synchronized (lock) {
                             --writeMsgNum;
                         }
-                        RESFlvData flvData = frameQueue.pop();
-                        if (writeMsgNum >= (maxQueueLength * 2 / 3) && flvData.flvTagType == RESFlvData.FLV_RTMP_PACKET_TYPE_VIDEO && flvData.droppable) {
+                        ResFlvData flvData = frameQueue.pop();
+
+                        // 如果发送队列中的数据过多，在条件满足的情况下，忽略这个数据
+                        if (writeMsgNum >= (MAX_QUEUE_CAPACITY * 2 / 3) && flvData.flvTagType == ResFlvData.FLV_TAGTYPE_VIDEO && flvData.droppable) {
                             LogTools.d("senderQueue is crowded, abort a frame");
                             break;
                         }
 
+                        // 发送 AVC TAG
                         int result = RtmpClient.write(jniRtmpPointer, flvData.byteBuffer, flvData.byteBuffer.length, flvData.flvTagType, flvData.dts);
                         if (result == 0) {
-                            if (flvData.flvTagType == RESFlvData.FLV_RTMP_PACKET_TYPE_VIDEO) {
-                                LogTools.d("video frame sent = " + flvData.size);
-                            } else {
-                                LogTools.d("audio frame sent = " + flvData.size);
+                            switch (flvData.flvTagType) {
+                                case ResFlvData.FLV_TAGTYPE_VIDEO:
+                                    LogTools.d("video frame sent: " + flvData.size);
+                                    break;
+                                case ResFlvData.FLV_TAGTYPE_AUDIO:
+                                    LogTools.d("audio frame sent: " + flvData.size);
+                                    break;
                             }
                         } else {
-                            LogTools.e("writeError = " + result);
+                            LogTools.e("write error: " + result);
                         }
-
                         break;
                     case STATE.STOPPED:
+                        // 关闭 RTMP 链接
                         result = RtmpClient.close(jniRtmpPointer);
-                        LogTools.e("close result = " + result);
+                        LogTools.d("close result: " + result);
                         break;
                 }
             }
         }
         int result = RtmpClient.close(jniRtmpPointer);
-        LogTools.e("close result = " + result);
+        LogTools.e("close result: " + result);
     }
 
     public void sendStart(String rtmpAddr) {
@@ -119,9 +127,9 @@ public class RtmpStreamingSender implements Runnable {
         state = STATE.STOPPED;
     }
 
-    public void sendFood(RESFlvData flvData, int type) {
+    public void sendFood(ResFlvData flvData, int type) {
         synchronized (lock) {
-            if (writeMsgNum <= maxQueueLength) {
+            if (writeMsgNum <= MAX_QUEUE_CAPACITY) {
                 frameQueue.add(flvData);
                 ++writeMsgNum;
             } else {

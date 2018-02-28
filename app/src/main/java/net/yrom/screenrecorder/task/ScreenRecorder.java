@@ -26,15 +26,15 @@ import android.util.Log;
 import android.view.Surface;
 
 import net.yrom.screenrecorder.core.Packager;
-import net.yrom.screenrecorder.rtmp.RESFlvData;
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.rtmp.ResFlvData;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 import net.yrom.screenrecorder.tools.LogTools;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static net.yrom.screenrecorder.rtmp.RESFlvData.FLV_RTMP_PACKET_TYPE_VIDEO;
+import static net.yrom.screenrecorder.rtmp.ResFlvData.FLV_TAGTYPE_VIDEO;
 
 /**
  * @author Yrom
@@ -48,7 +48,7 @@ public class ScreenRecorder extends Thread {
     private static final int IFRAME_INTERVAL = 2; // 2s between I-frames
     private static final int TIMEOUT_US = 10000;
 
-    private RESFlvDataCollecter mDataCollecter;
+    private ResFlvDataCollecter mDataCollecter;
     private int mWidth;
     private int mHeight;
     private int mBitRate;
@@ -62,7 +62,7 @@ public class ScreenRecorder extends Thread {
     private MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
     private VirtualDisplay virtualDisplay;
 
-    public ScreenRecorder(RESFlvDataCollecter dataCollecter, int width, int height, int bitRate, int dpi, MediaProjection mediaProjection) {
+    public ScreenRecorder(ResFlvDataCollecter dataCollecter, int width, int height, int bitRate, int dpi, MediaProjection mediaProjection) {
         super(TAG);
         mDataCollecter = dataCollecter;
         mWidth = width;
@@ -155,9 +155,9 @@ public class ScreenRecorder extends Thread {
                         //
                         ByteBuffer realData = mediaCodec.getOutputBuffer(eobIndex);
                         if (realData != null) {
-                            realData.position(bufferInfo.offset + 4);// TODO 为什么 + 4？？
+                            realData.position(bufferInfo.offset + 4);// 跳过用于表示上个 TAG 大小的 4 个字节
                             realData.limit(bufferInfo.offset + bufferInfo.size);
-                            sendRealData((bufferInfo.presentationTimeUs / 1000) - startTime, realData);
+                            sendAvcData((bufferInfo.presentationTimeUs / 1000) - startTime, realData);
                         }
                     }
                     mediaCodec.releaseOutputBuffer(eobIndex, false);
@@ -167,41 +167,41 @@ public class ScreenRecorder extends Thread {
     }
 
     private void sendAvcDecoderConfigurationRecord(long timeMs, MediaFormat format) {
-        byte[] avcDecoderConfigurationRecord = Packager.H264Packager.generateAvcDecoderConfigurationRecord(format);
-        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + avcDecoderConfigurationRecord.length;
+        byte[] avcDecoderConfigurationRecord = Packager.AvcPackager.generateAvcDecoderConfigurationRecord(format);
+        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH + avcDecoderConfigurationRecord.length;
         byte[] finalBuff = new byte[packetLen];
-        // 在 finalBuff 数组最前面插入 5 个字节的 FLV video TAG
-        Packager.FlvPackager.fillFlvVideoTag(finalBuff, 0, true, true, avcDecoderConfigurationRecord.length);
+        // 在 finalBuff 数组最前面插入 5 个字节的 FLV video TAG header
+        Packager.FlvPackager.setAvcTag(finalBuff, 0, true, true, avcDecoderConfigurationRecord.length);
         // 将 avcDecoderConfigurationRecord 数组的数据拼接到 finalBuff 数组后面
-        System.arraycopy(avcDecoderConfigurationRecord, 0, finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH, avcDecoderConfigurationRecord.length);
-        RESFlvData resFlvData = new RESFlvData();
+        System.arraycopy(avcDecoderConfigurationRecord, 0, finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH, avcDecoderConfigurationRecord.length);
+        ResFlvData resFlvData = new ResFlvData();
         resFlvData.droppable = false;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
         resFlvData.dts = (int) timeMs;
-        resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
-        resFlvData.videoFrameType = RESFlvData.NALU_TYPE_IDR;
-        mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
+        resFlvData.flvTagType = FLV_TAGTYPE_VIDEO;
+        resFlvData.videoFrameType = ResFlvData.AVC_NALU_TYPE_IDR;
+        mDataCollecter.collect(resFlvData, FLV_TAGTYPE_VIDEO);
     }
 
-    private void sendRealData(long timeMs, ByteBuffer realData) {
-        int realDataLength = realData.remaining();
-        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH + realDataLength;
+    private void sendAvcData(long timeMs, ByteBuffer data) {
+        int realDataLength = data.remaining();
+        int packetLen = Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH + realDataLength;
         byte[] finalBuff = new byte[packetLen];
-        // 将 realData 数组的数据放到 finalBuff 数组的第 Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH+Packager.FlvPackager.NALU_HEADER_LENGTH+1 个位置到结束
-        realData.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH, realDataLength);
-        // 获取 NALU 类型，计算后得 5 表示 NALU 类型是 NALU_TYPE_IDR
-        int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH] & 0x1F;
-        // 在 finalBuff 数组最前面插入 9 个字节的 FLV video TAG
-        Packager.FlvPackager.fillFlvVideoTag(finalBuff, 0, false, frameType == 5, realDataLength);
-        RESFlvData resFlvData = new RESFlvData();
+        // 将 data 数组的数据放到 finalBuff 数组的第 Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH+Packager.FlvPackager.NALU_HEADER_LENGTH+1 个位置到结束
+        data.get(finalBuff, Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH, realDataLength);
+        // 获取 NALU 类型，计算后得 5 表示 NALU 类型是 AVC_NALU_TYPE_IDR
+        int frameType = finalBuff[Packager.FlvPackager.FLV_VIDEO_TAG_HEADER_LENGTH + Packager.FlvPackager.NALU_HEADER_LENGTH] & 0x1F;
+        // 在 finalBuff 数组最前面插入 9 个字节的 FLV video TAG（含 5 个字节的 header 和 4 个字节的 length）
+        Packager.FlvPackager.setAvcTag(finalBuff, 0, false, frameType == 5, realDataLength);
+        ResFlvData resFlvData = new ResFlvData();
         resFlvData.droppable = true;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
         resFlvData.dts = (int) timeMs;
-        resFlvData.flvTagType = FLV_RTMP_PACKET_TYPE_VIDEO;
+        resFlvData.flvTagType = FLV_TAGTYPE_VIDEO;
         resFlvData.videoFrameType = frameType;
-        mDataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_VIDEO);
+        mDataCollecter.collect(resFlvData, FLV_TAGTYPE_VIDEO);
     }
 
     public boolean getStatus() {

@@ -4,13 +4,13 @@ import android.media.MediaCodec;
 import android.util.Log;
 
 import net.yrom.screenrecorder.core.Packager;
-import net.yrom.screenrecorder.rtmp.RESFlvData;
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.rtmp.ResFlvData;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 
 import java.nio.ByteBuffer;
 
 import static android.content.ContentValues.TAG;
-import static net.yrom.screenrecorder.rtmp.RESFlvData.FLV_RTMP_PACKET_TYPE_AUDIO;
+import static net.yrom.screenrecorder.rtmp.ResFlvData.FLV_TAGTYPE_AUDIO;
 
 /**
  * Created by lakeinchina on 26/05/16.
@@ -20,9 +20,9 @@ public class AudioSenderThread extends Thread {
     private MediaCodec.BufferInfo eInfo;
     private long startTime = 0;
     private MediaCodec dstAudioEncoder;
-    private RESFlvDataCollecter dataCollecter;
+    private ResFlvDataCollecter dataCollecter;
 
-    public AudioSenderThread(String name, MediaCodec encoder, RESFlvDataCollecter flvDataCollecter) {
+    public AudioSenderThread(String name, MediaCodec encoder, ResFlvDataCollecter flvDataCollecter) {
         super(name);
         eInfo = new MediaCodec.BufferInfo();
         startTime = 0;
@@ -77,38 +77,38 @@ public class AudioSenderThread extends Thread {
     }
 
     private void sendAudioSpecificConfig(long tms, ByteBuffer realData) {
-        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH +
+        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_HEADER_LENGTH +
                 realData.remaining();
         byte[] finalBuff = new byte[packetLen];
-        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH,
+        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_HEADER_LENGTH,
                 realData.remaining());
-        Packager.FlvPackager.fillFlvAudioTag(finalBuff,
+        Packager.FlvPackager.setAacTag(finalBuff,
                 0,
                 true);
-        RESFlvData resFlvData = new RESFlvData();
+        ResFlvData resFlvData = new ResFlvData();
         resFlvData.droppable = false;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
         resFlvData.dts = (int) tms;
-        resFlvData.flvTagType = RESFlvData.FLV_RTMP_PACKET_TYPE_AUDIO;
-        dataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_AUDIO);
+        resFlvData.flvTagType = ResFlvData.FLV_TAGTYPE_AUDIO;
+        dataCollecter.collect(resFlvData, FLV_TAGTYPE_AUDIO);
     }
 
     private void sendRealData(long tms, ByteBuffer realData) {
-        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH +
+        int packetLen = Packager.FlvPackager.FLV_AUDIO_TAG_HEADER_LENGTH +
                 realData.remaining();
         byte[] finalBuff = new byte[packetLen];
-        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_LENGTH,
+        realData.get(finalBuff, Packager.FlvPackager.FLV_AUDIO_TAG_HEADER_LENGTH,
                 realData.remaining());
-        Packager.FlvPackager.fillFlvAudioTag(finalBuff,
+        Packager.FlvPackager.setAacTag(finalBuff,
                 0,
                 false);
-        RESFlvData resFlvData = new RESFlvData();
+        ResFlvData resFlvData = new ResFlvData();
         resFlvData.droppable = true;
         resFlvData.byteBuffer = finalBuff;
         resFlvData.size = finalBuff.length;
         resFlvData.dts = (int) tms;
-        resFlvData.flvTagType = RESFlvData.FLV_RTMP_PACKET_TYPE_AUDIO;
-        dataCollecter.collect(resFlvData, FLV_RTMP_PACKET_TYPE_AUDIO);
+        resFlvData.flvTagType = ResFlvData.FLV_TAGTYPE_AUDIO;
+        dataCollecter.collect(resFlvData, FLV_TAGTYPE_AUDIO);
     }
 }

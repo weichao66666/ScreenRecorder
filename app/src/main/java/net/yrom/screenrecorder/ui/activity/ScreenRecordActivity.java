@@ -17,10 +17,10 @@ import android.widget.EditText;
 import android.widget.Toast;
 
 import net.yrom.screenrecorder.R;
-import net.yrom.screenrecorder.core.RESAudioClient;
-import net.yrom.screenrecorder.core.RESCoreParameters;
-import net.yrom.screenrecorder.rtmp.RESFlvData;
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.core.ResAudioClient;
+import net.yrom.screenrecorder.core.ResCoreParameters;
+import net.yrom.screenrecorder.rtmp.ResFlvData;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 import net.yrom.screenrecorder.service.ScreenRecordListenerService;
 import net.yrom.screenrecorder.task.RtmpStreamingSender;
 import net.yrom.screenrecorder.task.ScreenRecorder;
@@ -43,8 +43,8 @@ public class ScreenRecordActivity extends Activity implements View.OnClickListen
     private ScreenRecorder screenRecorder;
     private RtmpStreamingSender streamingSender;
     private ExecutorService executorService;
-    private RESAudioClient audioClient;
-    private RESCoreParameters coreParameters;
+    private ResAudioClient audioClient;
+    private ResCoreParameters coreParameters;
     private ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -122,8 +122,8 @@ public class ScreenRecordActivity extends Activity implements View.OnClickListen
             return;
         }
 
-        coreParameters = new RESCoreParameters();
-        audioClient = new RESAudioClient(coreParameters);
+        coreParameters = new ResCoreParameters();
+        audioClient = new ResAudioClient(coreParameters);
         if (!audioClient.prepare()) {
             LogTools.d("!!!!!audioClient.prepare() failed");
             return;
@@ -131,13 +131,13 @@ public class ScreenRecordActivity extends Activity implements View.OnClickListen
 
         streamingSender = new RtmpStreamingSender();
         streamingSender.sendStart(rtmpAddr);
-        RESFlvDataCollecter collecter = new RESFlvDataCollecter() {
+        ResFlvDataCollecter collecter = new ResFlvDataCollecter() {
             @Override
-            public void collect(RESFlvData flvData, int type) {
+            public void collect(ResFlvData flvData, int type) {
                 streamingSender.sendFood(flvData, type);
             }
         };
-        screenRecorder = new ScreenRecorder(collecter, RESFlvData.VIDEO_WIDTH, RESFlvData.VIDEO_HEIGHT, RESFlvData.VIDEO_BITRATE, 1, mediaProjection);
+        screenRecorder = new ScreenRecorder(collecter, ResFlvData.VIDEO_WIDTH, ResFlvData.VIDEO_HEIGHT, ResFlvData.VIDEO_BITRATE, 1, mediaProjection);
         screenRecorder.start();
         audioClient.start(collecter);
 

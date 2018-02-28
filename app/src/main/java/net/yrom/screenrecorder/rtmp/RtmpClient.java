@@ -5,7 +5,6 @@ package net.yrom.screenrecorder.rtmp;
  * Modified by raomengyang 17-3-12
  */
 public class RtmpClient {
-
     /**
      * @param url
      * @param isPublishMode
@@ -20,5 +19,4 @@ public class RtmpClient {
     public static native int close(long rtmpPointer);
 
     public static native String getIpAddr(long rtmpPointer);
-
 }

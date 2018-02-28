@@ -10,12 +10,12 @@ import java.nio.ByteBuffer;
  * Created by lake on 16-3-30.
  */
 public class Packager {
-    public static class H264Packager {
+    public static class AvcPackager {
         public static byte[] generateAvcDecoderConfigurationRecord(MediaFormat mediaFormat) {
             // 获取 csd-0 缓冲区的值，该值对应 SPS；csd-1 对应 PPS
             ByteBuffer spsByteBuff = mediaFormat.getByteBuffer("csd-0");
             ByteBuffer ppsByteBuff = mediaFormat.getByteBuffer("csd-1");
-            // 跳过 4 个字节的 configurationVersion，固定使用了 0x01
+            // 跳过 4 个字节
             spsByteBuff.position(4);
             ppsByteBuff.position(4);
             // 获取缓冲区剩余字节数
@@ -45,39 +45,39 @@ public class Packager {
             result[5] = (byte) 0xE1;// 3bit的reserved + 5bit的numOfSequenceParameterSets，实际测试时发现总为0xe1
             // result 数组第 7 位放置 spsLength 的高 8 位
             // result 数组第 8 位放置 spsLength 的低 8 位
-            ByteArrayTools.intToByteArrayTwoByte(result, 6, spsLength);
+            ByteArrayTools.intToTwoByteArray(result, 6, spsLength);
             int pos = 8 + spsLength;
             result[pos] = (byte) 0x01;// numOfPictureParameterSets，实际测试时发现总为0x01
             // result 数组第 8+spsLength+1 位放置 ppsLength 的高 8 位
             // result 数组第 8+spsLength+2 位放置 ppsLength 的低 8 位
-            ByteArrayTools.intToByteArrayTwoByte(result, pos + 1, ppsLength);
+            ByteArrayTools.intToTwoByteArray(result, pos + 1, ppsLength);
             return result;
         }
     }
 
     public static class FlvPackager {
-        public static final int FLV_TAG_LENGTH = 11;
-        public static final int FLV_VIDEO_TAG_LENGTH = 5;
-        public static final int FLV_AUDIO_TAG_LENGTH = 2;
+        public static final int FLV_TAG_HEADER_LENGTH = 11;
+        public static final int FLV_VIDEO_TAG_HEADER_LENGTH = 5;
+        public static final int FLV_AUDIO_TAG_HEADER_LENGTH = 2;
         public static final int FLV_TAG_FOOTER_LENGTH = 4;
         public static final int NALU_HEADER_LENGTH = 4;
 
-        public static void fillFlvVideoTag(byte[] dst, int pos, boolean isAvcSequenceHeader, boolean isIdr, int readDataLength) {
-            // 高 4 位表示 FrameType：1 为 I 帧，2 为 P 帧
+        public static void setAvcTag(byte[] dst, int pos, boolean isAvcSequenceHeader, boolean isIdr, int readDataLength) {
+            // 高 4 位表示 FrameType：1 为关键帧，2 为非关键帧
             // 低 4 位表示 CodecID：7 为 AVC
             dst[pos] = isIdr ? (byte) 0x17 : (byte) 0x27;// FrameType | CodecID
-            // 当数据为 AVC 头时没有 video/audio 存在，否则，有 video 存在
+            // 0 为 AVCDecoderConfigurationRecord，1 为 AVC NALU
             dst[pos + 1] = isAvcSequenceHeader ? (byte) 0x00 : (byte) 0x01;// AVCPacketType
             dst[pos + 2] = (byte) 0x00;// CompositionTime
             dst[pos + 3] = (byte) 0x00;// CompositionTime
             dst[pos + 4] = (byte) 0x00;// CompositionTime
             if (!isAvcSequenceHeader) {
-                // 将 readDataLength 分为 4 字节
-                ByteArrayTools.intToByteArrayFull(dst, pos + 5, readDataLength);
+                // 4 个字节的 readDataLength
+                ByteArrayTools.intToFourByteArray(dst, pos + 5, readDataLength);
             }
         }
 
-        public static void fillFlvAudioTag(byte[] dst, int pos, boolean isAACSequenceHeader) {
+        public static void setAacTag(byte[] dst, int pos, boolean isAACSequenceHeader) {
             /**
              * UB[4] 10=AAC
              * UB[2] 3=44kHz

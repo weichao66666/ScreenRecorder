@@ -4,31 +4,31 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 
-import net.yrom.screenrecorder.rtmp.RESFlvDataCollecter;
+import net.yrom.screenrecorder.rtmp.ResFlvDataCollecter;
 import net.yrom.screenrecorder.tools.LogTools;
 
 
 /**
  * Created by lake on 16-5-24.
  */
-public class RESAudioClient {
-    RESCoreParameters resCoreParameters;
+public class ResAudioClient {
+    ResCoreParameters resCoreParameters;
     private final Object syncOp = new Object();
     private AudioRecordThread audioRecordThread;
     private AudioRecord audioRecord;
     private byte[] audioBuffer;
-    private RESSoftAudioCore softAudioCore;
+    private ResSoftAudioCore softAudioCore;
 
-    public RESAudioClient(RESCoreParameters parameters) {
+    public ResAudioClient(ResCoreParameters parameters) {
         resCoreParameters = parameters;
     }
 
     public boolean prepare() {
         synchronized (syncOp) {
             resCoreParameters.audioBufferQueueNum = 5;
-            softAudioCore = new RESSoftAudioCore(resCoreParameters);
+            softAudioCore = new ResSoftAudioCore(resCoreParameters);
             if (!softAudioCore.prepare()) {
-                LogTools.e("RESAudioClient,prepare");
+                LogTools.e("ResAudioClient,prepare");
                 return false;
             }
             resCoreParameters.audioRecoderFormat = AudioFormat.ENCODING_PCM_16BIT;
@@ -42,13 +42,13 @@ public class RESAudioClient {
         }
     }
 
-    public boolean start(RESFlvDataCollecter flvDataCollecter) {
+    public boolean start(ResFlvDataCollecter flvDataCollecter) {
         synchronized (syncOp) {
             softAudioCore.start(flvDataCollecter);
             audioRecord.startRecording();
             audioRecordThread = new AudioRecordThread();
             audioRecordThread.start();
-            LogTools.d("RESAudioClient,start()");
+            LogTools.d("ResAudioClient,start()");
             return true;
         }
     }
